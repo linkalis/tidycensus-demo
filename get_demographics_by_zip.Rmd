@@ -1,0 +1,96 @@
+---
+title: "Get Demographic Variables by Zip Code"
+output: html_document
+---
+
+```{r}
+library(tidycensus)
+library(tidyverse)
+```
+
+## Get started
+
+Before proceeding, request a Census API key here: https://api.census.gov/data/key_signup.html
+
+Once your API key is ready, paste it into the code below and run the snippet to save the key to your computer for future use:
+
+```{r}
+census_api_key("your_key_goes_here", install=TRUE)
+```
+
+
+## Census data background
+
+The Census collects data in several different ways.  The two main surveys are:
+
+* **Decennial Census:** This is what we usually think about when we think about "census" data.  This is a nation-wide effort that attempts to collect data from every individual household every 10 years.
+
+* **American Community Survey (ACS):** This is an additional data collection effort conducted by the Census Bureau.  It collects much more detailed data on an annual basis.  It does not, however, collect data on every individual household.  Instead, it relies on sampling methods to get estimates that can generalize to geographic regions.  The yearly data is then made available as 1-year estimates, or as 3- or 5-year averaged estimates.  Generally, **it is recommended and more robust to use the 5-year ACS estimates data**.  See: https://www.census.gov/programs-surveys/acs/guidance/estimates.html
+
+
+## View available variables
+
+The American Community Survey has more detailed information than the Census, let's start with the ACS data.  To see which variables are available, execute the `load_variables()` command.  Then, use the `separate()` function to clean up the resulting table so it's a little easier to sort and organize.
+
+```{r, warning=FALSE}
+acs5_variables <- load_variables(2015, "acs5", cache = TRUE) %>% 
+  separate(label, sep="!!", into=c("type", "title", "demographic_breakdown_lvl1", "demographic_breakdown_lvl2"))
+
+View(acs5_variables)
+```
+
+```{r, warning=FALSE}
+decennial_census_variables <- load_variables(2010, "sf1", cache = TRUE) %>% 
+  separate(label, sep="!!", into=c("type", "title", "demographic_breakdown_lvl1", "demographic_breakdown_lvl2"))
+
+View(decennial_census_variables)
+```
+
+
+When you find a variable you're interested in, take note of the value in the `name` field.  This is what you'll use to retrieve the data for that variable.  
+
+Note that each of the variables often is cross-tabulated by up to two different levels of demographic breakdowns--called `demographic_breakdown_lvl1` and `demographic_breakdown_lvl2` in the table of variables.  Generally, **you will want to focus on variables that say "Total" or "NA" in the `demographic_breakdown_lvl1` field**.  This is the overall estimate of that variable for a given geography; other related variables are simply cross-tabulated subsets (by gender, age, income level, etc.) of this higher-level "Total" variable.
+
+You may also notice that some of the variable names include 'PR' in the middle--these are to provide separate aggregates for Puerto Rico, so ignore these and do not use them to request data for the continental U.S.  There should generally always be an equivalent variable name _without_ a 'PR' that you can use instead.
+
+
+## Get demographic data by zip code
+
+The Census Bureau collects data at the lowest statistically representative unit of analysis and then aggregates the data at several different geographic levels of detail:
+
+* **Blocks:** The smallest Census Bureau geographic entity; it generally is an area bounded by streets, streams, and the boundaries of legal and statistical entities.
+
+* **Block groups:** A grouping of census blocks having the same first digit in their identifying number within a census tract
+
+* **Census tracts:** A statistical subdivision of selected counties—established by a local committee of data users—that is a relatively stable basis for tabulating decennial census data. Secondarily, it serves as a framework for assigning census block numbers.
+
+See: https://www.census.gov/programs-surveys/geography/guidance/geographic-areas-reference-manual.html; https://www2.census.gov/geo/pdfs/reference/GARM/Ch2GARM.pdf 
+
+Notice that "zip code" is _not_ among the level of detail that is "native" to the Census!  Fortunately, the Census has done some work to map its data after the fact into "zip code tabulation areas" (or "ZCTA"s).  So, from here on out, you can simply **specify `geography="zcta"` in your Census data requests to get data aggregated by zip code**.  It can just sometimes help to be familiar with the "blocks" vs. "block groups" vs. "census tracts" terminology and know that, behind the scenes, the Census actually has a slightly different geographic hierarchy than zip codes for organizing its data.  To learn more about how the Census coerces its data into zipcode tabulation areas, see: https://www.census.gov/programs-surveys/geography/guidance/geo-areas/zctas.html
+
+```{r}
+median_income_by_zip <- get_acs(geography = "zcta", variables=c("B06001_001", "B07011_001", "B19326_001"), year=2015, moe_level = 90, survey = "acs5")
+
+# , "B07011_001", "B19326_001"
+#race_vars_by_zip <- get_acs(geography="zcta", variables=c("B02001_001", "B02001_002","B02001_003", "B02001_004", "B02001_005", "B02001_006", "B02001_007", "B02001_008", "B02001_009", "B02001_0010"), year=2015, moe_level=90, survey="acs5")
+
+#poverty_vars_by_zip <- get_acs(geography = "zcta", variables= c("B17010G_001", "B17010G_002"))
+```
+
+You'll notice that the census calls its metrics "estimates", because they are technically just that--estimates of "true" demographic parameters for a given geographic region, based on a sample of individuals who were surveyed.  Because of this, every metric in the census consists of two components:
+
+* **Estimate:** The "point" estimate of the parameter for the given geographic aggregation level.  Generally, the estimate alone should be good enough to include in modeling efforts.  Just know that, for rural geographic areas with small populations, the estimates can sometimes be unreliable.
+
+* **MOE:** The margin of error of the estimate, which defaults to a 90% confidence interval around the estimate.  If you have reason to question an estimate for a given geographic area, it can be helpful to double check the margin of error--particularly for geographic areas with small populations, or small populations of a given class/demographic of interest (ex: foreign born).  This gives you a sense of how "narrow" or "wide" the estimate is, which is something you'll want to consider when assessing whether the estimate provides you with meaningful information for a given geographic area.
+
+```{r}
+median_income_by_zip %>% filter(GEOID=='55455')
+```
+
+
+## Widen the data
+
+```{r}
+
+vars_wide <- median_income_by_zip %>% spread(key="GEOID", value="estimate")
+```
