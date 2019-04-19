@@ -32,6 +32,8 @@ The Census collects data in several different ways.  The two main surveys are:
 
 The American Community Survey has more detailed information than the Census, let's start with the ACS data.  To see which variables are available, execute the `load_variables()` command.  Then, use the `separate()` function to clean up the resulting table so it's a little easier to sort and organize.
 
+The Census Bureau also offers [documentation](https://www.census.gov/programs-surveys/acs/technical-documentation/code-lists.2015.html) on the data definitions for ACS data.  See this document for a helpful list of topics that are available, along with their definitions: https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2015_ACSSubjectDefinitions.pdf
+
 ```{r, warning=FALSE}
 acs5_variables <- load_variables(2015, "acs5", cache = TRUE) %>% 
   separate(label, sep="!!", into=c("type", "title", "demographic_breakdown_lvl1", "demographic_breakdown_lvl2"))
@@ -51,7 +53,9 @@ When you find a variable you're interested in, take note of the value in the `na
 
 Note that each of the variables often is cross-tabulated by up to two different levels of demographic breakdowns--called `demographic_breakdown_lvl1` and `demographic_breakdown_lvl2` in the table of variables.  Generally, **you will want to focus on variables that say "Total" or "NA" in the `demographic_breakdown_lvl1` field**.  This is the overall estimate of that variable for a given geography; other related variables are simply cross-tabulated subsets (by gender, age, income level, etc.) of this higher-level "Total" variable.
 
-You may also notice that some of the variable names include 'PR' in the middle--these are to provide separate aggregates for Puerto Rico, so ignore these and do not use them to request data for the continental U.S.  There should generally always be an equivalent variable name _without_ a 'PR' that you can use instead.
+Some variable names include the letters A-I in them after the table name (ex: "B01001**A**_001").  These are separate tabulations that are broken down by race.  (For example, the 'A' tables look at individuals whose race was reported as 'White alone', the 'B' tables look at 'Black/African-American alone', etc.)  You will **not** want to use these versions of the tables, since they are pre-filter in a way that makes it hard to look at aggregate trends!
+
+You may also notice that some of the variable names include 'PR' in them after the table name (ex: "B99052**PR**_007".  These are to provide separate aggregates for Puerto Rico, so ignore these and do not use them to request data for the continental U.S.  There should generally always be an equivalent variable name _without_ a 'PR' that you can use instead.
 
 
 ## Get demographic data by zip code
@@ -69,12 +73,7 @@ See: https://www.census.gov/programs-surveys/geography/guidance/geographic-areas
 Notice that "zip code" is _not_ among the level of detail that is "native" to the Census!  Fortunately, the Census has done some work to map its data after the fact into "zip code tabulation areas" (or "ZCTA"s).  So, from here on out, you can simply **specify `geography="zcta"` in your Census data requests to get data aggregated by zip code**.  It can just sometimes help to be familiar with the "blocks" vs. "block groups" vs. "census tracts" terminology and know that, behind the scenes, the Census actually has a slightly different geographic hierarchy than zip codes for organizing its data.  To learn more about how the Census coerces its data into zipcode tabulation areas, see: https://www.census.gov/programs-surveys/geography/guidance/geo-areas/zctas.html
 
 ```{r}
-median_income_by_zip <- get_acs(geography = "zcta", variables=c("B06001_001", "B07011_001", "B19326_001"), year=2015, moe_level = 90, survey = "acs5")
-
-# , "B07011_001", "B19326_001"
-#race_vars_by_zip <- get_acs(geography="zcta", variables=c("B02001_001", "B02001_002","B02001_003", "B02001_004", "B02001_005", "B02001_006", "B02001_007", "B02001_008", "B02001_009", "B02001_0010"), year=2015, moe_level=90, survey="acs5")
-
-#poverty_vars_by_zip <- get_acs(geography = "zcta", variables= c("B17010G_001", "B17010G_002"))
+demo_vars_by_zip <- get_acs(geography = "zcta", variables=c("B00001_001", "B19326_001"), year=2015, moe_level = 90, survey = "acs5")
 ```
 
 You'll notice that the census calls its metrics "estimates", because they are technically just that--estimates of "true" demographic parameters for a given geographic region, based on a sample of individuals who were surveyed.  Because of this, every metric in the census consists of two components:
@@ -83,14 +82,150 @@ You'll notice that the census calls its metrics "estimates", because they are te
 
 * **MOE:** The margin of error of the estimate, which defaults to a 90% confidence interval around the estimate.  If you have reason to question an estimate for a given geographic area, it can be helpful to double check the margin of error--particularly for geographic areas with small populations, or small populations of a given class/demographic of interest (ex: foreign born).  This gives you a sense of how "narrow" or "wide" the estimate is, which is something you'll want to consider when assessing whether the estimate provides you with meaningful information for a given geographic area.
 
+Let's look at data for some Minneapolis zip codes.  The variable labeled "B00001_001" is the sample size upon which the estimate is based.  This is the "raw" number of people surveyed within the given geographic area, and from which the Census Bureau is generalizing population statistics for the given geographic area.  It is interesting for reference, but is not directly interpretable; this sample size must be weighted using statistical procedures to make it more representative of the population demographics.  (See: https://www.census.gov/content/dam/Census/library/publications/2010/acs/Chapter_11_RevisedDec2010.pdf)  The variable labeled "B19326_001" is the median income of individuals in the zip code.  
+
+Notice that the estimates can be strangely low (ex: zip code 55455) or nonexistent (ex: 55405) for zip codes that have a sample size that is small or equal to zero:
+
 ```{r}
-median_income_by_zip %>% filter(GEOID=='55455')
+preview_zips <- c("55401", "55402", "55403", "55404", "55405", "55406", "55407", "55408", "55409", "55410", "55411", "55412", "55413", "55414", "55415", "55416", "55417", "55418", "55419", "55421", "55423", "55430", "55450", "55454", "55455")
+
+demo_vars_by_zip %>% filter(GEOID %in% preview_zips) %>% arrange(GEOID, variable)
 ```
 
 
-## Widen the data
+## Get select variables
+
+### Income variables
+
+* "B19326_001" = Median income in the past 12 months (in 2015 Inflation-adjusted dollars)
+
+* "B19083_001" = Gini index of income inequality
+
+Other variables to consider:
+
+* "B07011_001"
+
+* "B19001_001"
+
+* "B19101_001"
 
 ```{r}
-
-vars_wide <- median_income_by_zip %>% spread(key="GEOID", value="estimate")
+income_vars_by_zip <- get_acs(geography = "zcta", variables=c("B19326_001", "B19083_001"), year=2015, moe_level = 90, survey = "acs5")
 ```
+
+Transform the data to wide format, then visualize as a table and a histogram:
+
+```{r}
+income_vars_wide <- income_vars_by_zip %>% 
+  select(GEOID, variable, estimate) %>% 
+  spread(key="variable", value="estimate")
+
+income_vars_wide %>% filter(GEOID %in% preview_zips)
+
+ggplot(income_vars_wide, aes(x=B19326_001)) +
+  geom_histogram()
+```
+
+
+
+### Percent below poverty
+
+"B17004_001" = Total (weighted based on sample)
+
+"B17004_002" = Income in the past 12 months below poverty level
+
+"B17004_011" = Income in the past 12 months at or above poverty level
+
+```{r}
+poverty_vars_by_zip <- get_acs(geography = "zcta", variables= c("B17004_001", "B17004_002", "B17004_011"), year=2015, moe_level = 90, survey = "acs5")
+```
+
+Transform the data to wide format, then visualize as a table and a histogram:
+
+```{r}
+poverty_vars_wide <- poverty_vars_by_zip %>% 
+  select(GEOID, variable, estimate) %>% 
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_below_poverty = (B17004_002 / B17004_001) * 100)
+
+poverty_vars_wide %>% filter(GEOID %in% preview_zips)
+
+ggplot(poverty_vars_wide, aes(x=pct_below_poverty)) + 
+  geom_histogram()
+```
+
+
+### Educational attainment
+
+"B16010_001" = Total (weighted based on sample)
+
+"B16010_002" = Less than high school graduate
+
+"B16010_015" = High school graduate (includes equivalency)
+
+"B16010_028" = Some college or associate's degree
+
+"B16010_041" = Bachelor's degree or higher
+
+```{r}
+ed_vars_by_zip <- get_acs(geography = "zcta", variables= c("B16010_001", "B16010_002", "B16010_015", "B16010_028", "B16010_041"), year=2015, moe_level = 90, survey = "acs5")
+```
+
+```{r}
+ed_vars_wide <- ed_vars_by_zip %>% 
+  select(GEOID, variable, estimate) %>% 
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_less_than_hs_grad = (B16010_002 / B16010_001) * 100,
+         pct_w_bachelor_or_higher = (B16010_041 / B16010_001) * 100)
+
+ed_vars_wide %>% filter(GEOID %in% preview_zips)
+
+ggplot(ed_vars_wide, aes(x=pct_less_than_hs_grad)) + 
+  geom_histogram() +
+  ggtitle("Pct less than high school graduate")
+
+ggplot(ed_vars_wide, aes(x=pct_w_bachelor_or_higher)) + 
+  geom_histogram() +
+  ggtitle("Pct w/ bachelor's degree or higher")
+```
+
+## Put it all together on a map
+
+```{r}
+options(tigris_use_cache = TRUE) # This will cache the geometry information so we don't have to re-download it every time
+
+all_vars <- get_acs(geography = "zcta", variables= c(
+  "B19326_001", "B19083_001", # income vars
+  "B17004_001", "B17004_002", "B17004_011", # poverty vars
+  "B16010_001", "B16010_002", "B16010_015", "B16010_028", "B16010_041" # educational attainment vars
+  ), year=2015, moe_level = 90, survey = "acs5", geometry=TRUE)
+```
+
+```{r}
+all_vars_wide <- all_vars %>% 
+  select(GEOID, variable, estimate, geometry) %>% 
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_below_poverty = (B17004_002 / B17004_001) * 100,
+         pct_less_than_hs_grad = (B16010_002 / B16010_001) * 100,
+         pct_w_bachelor_or_higher = (B16010_041 / B16010_001) * 100)
+```
+
+```{r}
+filter_data <- all_vars %>% filter(GEOID %in% preview_zips)
+
+ggplot(all_vars_wide, aes(fill = estimate)) + 
+  geom_sf(color = NA) + 
+  coord_sf(crs = 32615) + 
+  scale_fill_viridis_c(option = "magma")
+```
+
+
+## Additional references
+
+* Calculating Measures of Error for Derived Estimates [Census Bureau]. https://www.census.gov/content/dam/Census/library/publications/2018/acs/acs_general_handbook_2018_ch08.pdf
+
+* Tutorial: How to understand and retrieve Census data — for beginners [blog]. https://trendct.org/2015/08/14/tutorial-how-to-understand-and-retrieve-census-data-for-beginners/
+
+* ACS Table IDs Explained [Census Bureau]. https://www.census.gov/programs-surveys/acs/guidance/which-data-tool/table-ids-explained.html
+
+* What Researchers Need to Know [Census Bureau Handbook]. https://www.census.gov/library/publications/2009/acs/researchers.html 
