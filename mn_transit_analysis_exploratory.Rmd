@@ -188,12 +188,11 @@ independent_living_by_county %>%
   mutate(pct_independent_living_difficulty = round(((B18107_004 + B18107_007 + B18107_010 + B18107_013 + B18107_017 + B18107_020 + B18107_023 + B18107_026) / B18107_001) * 100, 2)) %>%
 ggplot(., aes(fill = pct_independent_living_difficulty)) + 
   geom_sf(color = NA) + 
-  coord_sf(crs = 32615) + # picking a coordinate system that should work well for MN
+  coord_sf(crs = 32615, datum=NA) + # picking a coordinate system that should work well for MN
   geom_sf_text(aes(label=paste(county, "\n(", pct_independent_living_difficulty, ") ", sep="")), size = 2, color="#ffffff") +
   scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
   ggtitle("Percent of population with independent living difficulty") +
-  xlab(NULL) +
-  ylab(NULL)
+  labs(fill="% of population", x=NULL, y=NULL)
 ```
 
 
@@ -273,9 +272,11 @@ older_pop_by_county_joined <- left_join(older_pop_by_county_2009_wide, older_pop
 
 ```{r}
 older_pop_by_county_joined %>%
-  mutate(pct_change_in_65_and_over = pct_65_and_over_2017 - pct_65_and_over_2009) %>%
+  mutate(pct_change_in_65_and_over = round(pct_65_and_over_2017 - pct_65_and_over_2009, 3)) %>%
 ggplot(., aes(x=reorder(county, -pct_change_in_65_and_over), y=pct_change_in_65_and_over)) +
   geom_bar(stat="identity") +
+  geom_text(aes(label=pct_change_in_65_and_over), angle=90, size=3, hjust=-0.5) +
+  ylim(-2.5, 9) + 
   xlab("County") +
   ylab("Percent change") +
   ggtitle("Percent change in 65 and older population between 2009 - 2017") +
@@ -295,6 +296,39 @@ ggplot(older_pop_by_county_2017_wide, aes(fill = pct_65_and_over)) +
 ```
 
 
+
+### Traffic accident rates by county
+
+```{r}
+mn_counties <- get_acs(
+  geography = "county", 
+  variables=c("B01001_001" # Total population
+              ), 
+  state = "MN",
+  year = 2017,
+  moe_level = 90, 
+  survey = "acs5", 
+  geometry = TRUE # This will download the county boundaries geometries behind the scenes so we can use them for mapping
+  ) %>%
+  mutate(county = gsub(" County, Minnesota", "", NAME))
+```
+
+```{r}
+traffic_data <- read.csv("~/Dropbox/Open Twin Cities Projects/TransitOpportunity/mn_traffic_accidents_2018.csv", header=TRUE, stringsAsFactors = FALSE)
+
+traffic_counties_data <- bind_cols(mn_counties, traffic_data)
+```
+
+```{r}
+traffic_counties_data %>%
+  mutate(accidents_per_capita = round((AllCrashes / Population.2018) * 1000, 2)) %>%
+ggplot(., aes(fill = accidents_per_capita)) + 
+  geom_sf(color = NA) + 
+  coord_sf(crs = 32615, datum=NA) + # picking a coordinate system that should work well for MN
+  geom_sf_text(aes(label=paste(county, "\n(", accidents_per_capita, ") ", sep="")), size = 2, color="#ffffff") +
+  scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
+  labs(title="Traffic crashes per 1,000 residents (2018)", caption="Source: Minnesota Office of Traffic Safety, Minnesota State Demographic Center", x=NULL, y=NULL, legend=NULL)
+```
 
 
 
