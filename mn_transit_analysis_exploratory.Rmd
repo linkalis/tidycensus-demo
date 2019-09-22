@@ -1,0 +1,181 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Get started
+
+```{r}
+library(tidyverse)
+library(tidycensus)
+
+options(scipen = 999) # Turn off scientific notation (in case it happens to be turned on)
+```
+
+
+## Understand the data
+
+You can view the original text of the American Community Survey here: https://www2.census.gov/programs-surveys/acs/methodology/questionnaires/2017/quest17.pdf.  This may help with interpreting some of the variables.
+
+You can view the available variables by loading them into a "dictionary"-type table:
+
+```{r, warning=FALSE}
+acs5_variables <- load_variables(2017, "acs5", cache = TRUE) %>% 
+  separate(label, sep="!!", into=c("type", "title", "demographic_breakdown_lvl1", "demographic_breakdown_lvl2"))
+
+View(acs5_variables)
+```
+
+Then, when you're viewing the table, click the "Filter" button in the upper left-hand corner to toggle on the filter capabilities and start searching any of the fields to discover variables you're interested in.  It can also help to cross-reference the American FactFinder website.  This lets you view the variable IDs and preview the underlying summary tables they belong to: https://factfinder.census.gov/faces/nav/jsf/pages/index.xhtml
+
+To search for transit-related variables on American FactFinder:
+
+1. Open the "Advanced Search"
+
+2. In the "Topic or talble name" search box, start typing the word "Commuting", and select "Commuting (Journey to Work)" from the drop-down options
+
+3. For the "Dataset", choose "2017 ACS 5-Year Estimates"
+
+3. From the "Geographies" options, select: "County" > "Minnesota" > "All Counties within Minnesota" > "Add to Your Selections"
+
+
+## Get Minnesota-wide, county-level data for transit variables we're interested in
+
+```{r}
+options(tigris_use_cache = TRUE) # This will cache the geometry information so we don't have to re-download it every time
+
+vars_by_county <- get_acs(
+  geography = "county", 
+  variables=c(# Baseline percentages of each transit type
+              "B08006_001", # Workers 16 years and over - Population (to use as our denominator)
+              "B08006_003", # Means of transportation to work - Car truck or van - drove alone
+              "B08006_004", # Means of transportation to work - Car truck or van - carpooled
+              "B08006_008", # Means of transportation to work - Public transportation (excluding taxicab)
+              "B08006_014", # Means of transportation to work - Bicycle
+              "B08006_015", # Means of transportation to work - Walked
+              "B08006_016", # Means of transportation to work - Taxicab motorcycle or other means
+              "B08006_017", # Means of transportation to work - Worked at home
+              
+              # Median age variables
+              "B08103_002", # Median age by means of transportation to work	- Car truck or van - drove alone
+              "B08103_003", # Median age by means of transportation to work	- Car truck or van - carpooled
+              "B08103_004", # Median age by means of transportation to work - Public transportation (excluding taxicab)
+              "B08103_005", # Median age by means of transportation to work - Walked
+              "B08103_006", # Median age by means of transportation to work - Taxicab motorcycle bicycle or other means
+              "B08103_007", # Median age by means of transportation to work - Worked at home
+              
+              # Median earnings variables
+              "B08121_001", # Median earnings in the past 12 months	- Population
+              "B08121_002", # Median earnings in the past 12 months - Car truck or van - drove alone
+              "B08121_003", # Median earnings in the past 12 months - Car truck or van - carpooled
+              "B08121_004", # Median earnings in the past 12 months - Public transportation (excluding taxicab)
+              "B08121_005", # Median earnings in the past 12 months - Walked
+              "B08121_006", # Median earnings in the past 12 months - Taxicab motorcycle bicycle or other means
+              "B08121_007" # Median earnings in the past 12 months - Worked at home
+              ), 
+  state = "MN",
+  year = 2017, 
+  moe_level = 90, 
+  survey = "acs5", 
+  geometry = TRUE # This will download the county boundaries geometries behind the scenes so we can use them for mapping
+  ) %>%
+  mutate(county = gsub(" County, Minnesota", "", NAME)) # Perform some additional data clean-up to make our county names less verbose
+```
+
+
+## Plot stuff
+
+### Make a bar chart
+
+```{r}
+vars_by_county %>% 
+  filter(variable=="B08121_001") %>%
+ggplot(., aes(x=reorder(county, -estimate), y=estimate)) + 
+  geom_bar(stat="identity") +
+  xlab("County") +
+  ylab("Median earnings") +
+  ggtitle("MN county median earnings in the past 12 months") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+Here's a bar chart that requires computing a percentage using a denominator that aligns with the variable being examined:
+
+```{r}
+vars_by_county %>%
+  select(county, variable, estimate) %>%
+  filter(str_detect(variable, "B08006")) %>%
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_public_transport = (B08006_008 / B08006_001) * 100) %>%
+ggplot(., aes(x=reorder(county, -pct_public_transport), y=pct_public_transport)) +
+  geom_bar(stat="identity") +
+  xlab("County") +
+  ylab("Percent of workers") +
+  ggtitle("Percent of workers age 16 and over who take public transit to work") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+### Make a map
+
+```{r}
+vars_by_county %>% 
+  filter(variable=="B08103_004" # pick the variable to map
+         & moe < estimate * 0.5) %>% # filter out counties where the margin of error is huge
+ggplot(., aes(fill = estimate)) + 
+  geom_sf(color = NA) + 
+  coord_sf(crs = 32615) + # picking a coordinate system that should work well for MN
+  geom_sf_text(aes(label=paste(county, "\n(", estimate, ") ", sep="")), size = 2, color="#ffffff") +
+  scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
+  ggtitle("Median age of people who use public transit to get to work")
+```
+
+There are a few other color schemes you can try: "viridis", "magma", "plasma", "inferno", "cividis".  These color schemes are designed to be accessible to users with colorblindness.  See: https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
+
+
+### Make a stacked bar chart
+
+This below is not working!!!
+
+```{r}
+vars_by_county %>%
+  select(county, variable, estimate) %>%
+  filter(str_detect(variable, "B08006")) %>%
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_drove_alone = (B08006_003 / B08006_001) * 100,
+         pct_carpool = (B08006_004 / B08006_001) * 100,
+         pct_public_transport = (B08006_008 / B08006_001) * 100,
+         pct_bicycle = (B08006_014 / B08006_001) * 100,
+         pct_walked = (B08006_015 / B08006_001) * 100,
+         pct_taxi_motorcycle_other = (B08006_016 / B08006_001) * 100,
+         pct_work_from_home = (B08006_017 / B08006_001) * 100) %>%
+  select(county, pct_drove_alone, pct_carpool, pct_public_transport, pct_bicycle, pct_walked, pct_taxi_motorcycle_other, pct_work_from_home) %>%
+  gather(key="variable", value="estimate", -county)
+```
+
+
+
+
+***
+
+If time, look at some...
+
+## "Careful with the denominators" variables
+
+*Universe: Workers whose means of transportation is car, truck, or van*
+Universe = "B08006_002"
+
+"B08015_001", # Aggregate number of vehicles (car truck or van) used in commuting	by workers 16 years and over - Population
+"B08015_002", # Aggregate number of vehicles (car truck or van) used in commuting	by workers 16 years and over - Female
+"B08015_003", # Aggregate number of vehicles (car truck or van) used in commuting	by workers 16 years and over - Male
+
+
+*Universe: Workers 16 years and over who did not work at home*
+Universe = "B08006_001" - "B08006_017"
+
+"B08013_001", # Aggregate travel time to work (in minutes) - Population
+"B08013_002", # Aggregate travel time to work (in minutes) - Female
+"B08013_003", # Aggregate travel time to work (in minutes) - Male
+
+
+
+              

@@ -3,14 +3,23 @@ title: "Get Demographic Variables by Zip Code"
 output: html_document
 ---
 
+## Get started
+
+To get started, install the required packages:
+
+```{r}
+install.packages("tidycensus")
+install.packages("tidyverse")
+```
+
+Then, load the packages so you can use them:
+
 ```{r}
 library(tidycensus)
 library(tidyverse)
 ```
 
-## Get started
-
-Before proceeding, request a Census API key here: https://api.census.gov/data/key_signup.html
+Next, request a Census API key here: https://api.census.gov/data/key_signup.html
 
 Once your API key is ready, paste it into the code below and run the snippet to save the key to your computer for future use:
 
@@ -35,7 +44,7 @@ The American Community Survey has more detailed information than the Census, let
 The Census Bureau also offers [documentation](https://www.census.gov/programs-surveys/acs/technical-documentation/code-lists.2015.html) on the data definitions for ACS data.  See this document for a helpful list of topics that are available, along with their definitions: https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2015_ACSSubjectDefinitions.pdf
 
 ```{r, warning=FALSE}
-acs5_variables <- load_variables(2015, "acs5", cache = TRUE) %>% 
+acs5_variables <- load_variables(2017, "acs5", cache = TRUE) %>% 
   separate(label, sep="!!", into=c("type", "title", "demographic_breakdown_lvl1", "demographic_breakdown_lvl2"))
 
 View(acs5_variables)
@@ -82,13 +91,17 @@ You'll notice that the census calls its metrics "estimates", because they are te
 
 * **MOE:** The margin of error of the estimate, which defaults to a 90% confidence interval around the estimate.  If you have reason to question an estimate for a given geographic area, it can be helpful to double check the margin of error--particularly for geographic areas with small populations, or small populations of a given class/demographic of interest (ex: foreign born).  This gives you a sense of how "narrow" or "wide" the estimate is, which is something you'll want to consider when assessing whether the estimate provides you with meaningful information for a given geographic area.
 
-Let's look at data for some Minneapolis zip codes.  The variable labeled "B00001_001" is the sample size upon which the estimate is based.  This is the "raw" number of people surveyed within the given geographic area, and from which the Census Bureau is generalizing population statistics for the given geographic area.  It is interesting for reference, but is not directly interpretable; this sample size must be weighted using statistical procedures to make it more representative of the population demographics.  (See: https://www.census.gov/content/dam/Census/library/publications/2010/acs/Chapter_11_RevisedDec2010.pdf)  The variable labeled "B19326_001" is the median income of individuals in the zip code.  
+Let's look at data for some Minneapolis zip codes.  First, let's load in a vector of the zip codes in the Minneapolis area so we can use these to filter the dataset:
+
+```{r}
+preview_zips <- c("55401", "55402", "55403", "55404", "55405", "55406", "55407", "55408", "55409", "55410", "55411", "55412", "55413", "55414", "55415", "55416", "55417", "55418", "55419", "55421", "55423", "55430", "55450", "55454", "55455")
+```
+
+The variable labeled "B00001_001" is the sample size upon which the estimate is based.  This is the "raw" number of people surveyed within the given geographic area, and from which the Census Bureau is generalizing population statistics for the given geographic area.  It is interesting for reference, but is not directly interpretable; this sample size must be weighted using statistical procedures to make it more representative of the population demographics.  (See: https://www.census.gov/content/dam/Census/library/publications/2010/acs/Chapter_11_RevisedDec2010.pdf)  The variable labeled "B19326_001" is the median income of individuals in the zip code.  
 
 Notice that the estimates can be strangely low (ex: zip code 55455) or nonexistent (ex: 55405) for zip codes that have a sample size that is small or equal to zero:
 
 ```{r}
-preview_zips <- c("55401", "55402", "55403", "55404", "55405", "55406", "55407", "55408", "55409", "55410", "55411", "55412", "55413", "55414", "55415", "55416", "55417", "55418", "55419", "55421", "55423", "55430", "55450", "55454", "55455")
-
 demo_vars_by_zip %>% filter(GEOID %in% preview_zips) %>% arrange(GEOID, variable)
 ```
 
@@ -211,11 +224,14 @@ all_vars_wide <- all_vars %>%
 ```
 
 ```{r}
-filter_data <- all_vars %>% filter(GEOID %in% preview_zips)
+filtered_data <- all_vars %>% filter(GEOID %in% preview_zips)
+filtered_data
+```
 
-ggplot(all_vars_wide, aes(fill = estimate)) + 
+```{r}
+ggplot(filtered_data, aes(fill = B19326_001)) + 
   geom_sf(color = NA) + 
-  coord_sf(crs = 32615) + 
+  coord_sf(crs = 32615) + # picking a coordinate system that should work well for Minneapolis
   scale_fill_viridis_c(option = "magma")
 ```
 
