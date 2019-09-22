@@ -120,13 +120,15 @@ ggplot(., aes(x=reorder(county, -pct_public_transport), y=pct_public_transport))
 ```{r}
 vars_by_county %>% 
   filter(variable=="B08103_004" # pick the variable to map
-         & moe < estimate * 0.5) %>% # filter out counties where the margin of error is huge
+         & moe < estimate * 0.8) %>% # filter out counties where the margin of error is huge
 ggplot(., aes(fill = estimate)) + 
   geom_sf(color = NA) + 
   coord_sf(crs = 32615) + # picking a coordinate system that should work well for MN
   geom_sf_text(aes(label=paste(county, "\n(", estimate, ") ", sep="")), size = 2, color="#ffffff") +
   scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
-  ggtitle("Median age of people who use public transit to get to work")
+  ggtitle("Median age of people who use public transit to get to work") +
+  xlab(NULL) +
+  ylab(NULL)
 ```
 
 There are a few other color schemes you can try: "viridis", "magma", "plasma", "inferno", "cividis".  These color schemes are designed to be accessible to users with colorblindness.  See: https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
@@ -151,6 +153,147 @@ vars_by_county %>%
   select(county, pct_drove_alone, pct_carpool, pct_public_transport, pct_bicycle, pct_walked, pct_taxi_motorcycle_other, pct_work_from_home) %>%
   gather(key="variable", value="estimate", -county)
 ```
+
+
+
+## Independent living difficulty
+
+```{r}
+independent_living_by_county <- get_acs(
+  geography = "county", 
+  variables=c("B18107_001", # Civilian noninstitutionalized population 18 years and over
+              "B18107_004", # Male 18-34 w/ independent living difficulty
+              "B18107_007", # Male 35-64 w/ independent living difficulty
+              "B18107_010", # Male 65-74 w/ independent living difficulty
+              "B18107_013", # Male 75 and over w/ independent living difficulty
+              "B18107_017", # Female 18-34 w/ independent living difficulty
+              "B18107_020", # Female 35-64 w/ independent living difficulty
+              "B18107_023", # Female 65-74 w/ independent living difficulty
+              "B18107_026" # Female 75 and over w/ independent living difficulty
+              ), 
+  state = "MN",
+  year = 2017, 
+  moe_level = 90, 
+  survey = "acs5", 
+  geometry = TRUE # This will download the county boundaries geometries behind the scenes so we can use them for mapping
+  ) %>%
+  mutate(county = gsub(" County, Minnesota", "", NAME)) # Perform some additional data clean-up to make our county names less verbose
+```
+
+```{r}
+independent_living_by_county %>%
+  select(county, variable, estimate) %>%
+  filter(str_detect(variable, "B18107")) %>%
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_independent_living_difficulty = round(((B18107_004 + B18107_007 + B18107_010 + B18107_013 + B18107_017 + B18107_020 + B18107_023 + B18107_026) / B18107_001) * 100, 2)) %>%
+ggplot(., aes(fill = pct_independent_living_difficulty)) + 
+  geom_sf(color = NA) + 
+  coord_sf(crs = 32615) + # picking a coordinate system that should work well for MN
+  geom_sf_text(aes(label=paste(county, "\n(", pct_independent_living_difficulty, ") ", sep="")), size = 2, color="#ffffff") +
+  scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
+  ggtitle("Percent of population with independent living difficulty") +
+  xlab(NULL) +
+  ylab(NULL)
+```
+
+
+### Older adults (and change over time)
+
+```{r}
+older_pop_by_county_2009 <- get_acs(
+  geography = "county", 
+  variables=c("B01001_001", # Total population
+              "B01001_020", # Male - 65 and 66 years
+              "B01001_021", # Male - 67 to 69 years
+              "B01001_022", # Male - 70 to 74 years
+              "B01001_023", # Male - 75 to 79 years
+              "B01001_024", # Male - 80 to 84 years
+              "B01001_025", # Male - 85 years and over
+              "B01001_044", # Female - 65 and 66 years
+              "B01001_045", # Female - 67 to 69 years
+              "B01001_046", # Female - 70 to 74 years
+              "B01001_047", # Female - 75 to 79 years
+              "B01001_048", # Female - 80 to 84 years
+              "B01001_049" # Female - 85 years and over
+              ), 
+  state = "MN",
+  year = 2009,
+  moe_level = 90, 
+  survey = "acs5", 
+  geometry = FALSE # This will download the county boundaries geometries behind the scenes so we can use them for mapping
+  ) %>%
+  mutate(county = gsub(" County, Minnesota", "", NAME)) # Perform some additional data clean-up to make our county names less verbose
+```
+
+
+```{r}
+older_pop_by_county_2017 <- get_acs(
+  geography = "county", 
+  variables=c("B01001_001", # Total population
+              "B01001_020", # Male - 65 and 66 years
+              "B01001_021", # Male - 67 to 69 years
+              "B01001_022", # Male - 70 to 74 years
+              "B01001_023", # Male - 75 to 79 years
+              "B01001_024", # Male - 80 to 84 years
+              "B01001_025", # Male - 85 years and over
+              "B01001_044", # Female - 65 and 66 years
+              "B01001_045", # Female - 67 to 69 years
+              "B01001_046", # Female - 70 to 74 years
+              "B01001_047", # Female - 75 to 79 years
+              "B01001_048", # Female - 80 to 84 years
+              "B01001_049" # Female - 85 years and over
+              ), 
+  state = "MN",
+  year = 2017,
+  moe_level = 90, 
+  survey = "acs5", 
+  geometry = FALSE # This will download the county boundaries geometries behind the scenes so we can use them for mapping
+  ) %>%
+  mutate(county = gsub(" County, Minnesota", "", NAME)) # Perform some additional data clean-up to make our county names less verbose
+```
+
+Make the data wide, and then join:
+
+```{r}
+older_pop_by_county_2009_wide <- older_pop_by_county_2009 %>%
+  select(county, variable, estimate) %>%
+  filter(str_detect(variable, "B01001")) %>%
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_65_and_over = round(((B01001_020 + B01001_021 + B01001_022 + B01001_023 + B01001_024 + B01001_025 + B01001_044 + B01001_045 + B01001_046 + B01001_047 + B01001_048 + B01001_049) / B01001_001) * 100, 2)) 
+
+older_pop_by_county_2017_wide <- older_pop_by_county_2017 %>%
+  select(county, variable, estimate) %>%
+  filter(str_detect(variable, "B01001")) %>%
+  spread(key="variable", value="estimate") %>%
+  mutate(pct_65_and_over = round(((B01001_020 + B01001_021 + B01001_022 + B01001_023 + B01001_024 + B01001_025 + B01001_044 + B01001_045 + B01001_046 + B01001_047 + B01001_048 + B01001_049) / B01001_001) * 100, 2)) 
+
+older_pop_by_county_joined <- left_join(older_pop_by_county_2009_wide, older_pop_by_county_2017_wide, by="county", suffix = c("_2009", "_2017"))
+```
+
+
+```{r}
+older_pop_by_county_joined %>%
+  mutate(pct_change_in_65_and_over = pct_65_and_over_2017 - pct_65_and_over_2009) %>%
+ggplot(., aes(x=reorder(county, -pct_change_in_65_and_over), y=pct_change_in_65_and_over)) +
+  geom_bar(stat="identity") +
+  xlab("County") +
+  ylab("Percent change") +
+  ggtitle("Percent change in 65 and older population between 2009 - 2017") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+ggplot(older_pop_by_county_2017_wide, aes(fill = pct_65_and_over)) + 
+  geom_sf(color = NA) + 
+  coord_sf(crs = 32615) + # picking a coordinate system that should work well for MN
+  geom_sf_text(aes(label=paste(county, "\n(", pct_65_and_over, ") ", sep="")), size = 2, color="#ffffff") +
+  scale_fill_viridis_c(option = "plasma", direction = -1) + # Use the plasma color scheme, but in reverse order so darker is on top
+  ggtitle("Percent of population 65 and over") +
+  xlab(NULL) +
+  ylab(NULL)
+```
+
 
 
 
